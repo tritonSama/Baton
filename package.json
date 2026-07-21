@@ -2,9 +2,14 @@
   "name": "baton",
   "version": "0.1.0",
   "description": "AI-Powered Music Mastering, Vocal Recreation & Production Suite",
+  "author": "Baton Development Team",
+  "license": "UNLICENSED",
   "private": true,
   "type": "module",
   "main": "dist-electron/main.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "dev:electron": "vite --mode electron",
@@ -14,7 +19,10 @@
     "test:watch": "vitest",
     "test:diagnostics": "vitest run --reporter=verbose",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "dist": "npm run build && electron-builder --win",
+    "dist:dir": "npm run build && electron-builder --win --dir",
+    "dist:portable": "npm run build && electron-builder --win portable"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.14",
@@ -35,6 +43,7 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
     "jsdom": "^26.1.0",
     "tailwindcss": "^4.1.11",
     "typescript": "^5.8.3",
@@ -42,5 +51,49 @@
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6",
     "vitest": "^3.2.4"
+  },
+  "build": {
+    "appId": "com.baton.studio",
+    "productName": "Baton",
+    "copyright": "Copyright © Baton Development Team",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Baton",
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    }
   }
 }

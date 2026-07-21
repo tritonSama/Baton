@@ -9,6 +9,7 @@ import {
   SplitPanel,
   VoicePanel,
 } from '@/components/ToolPanels'
+import { AIAssistantPanel } from '@/components/AIAssistantPanel'
 import { PrimaryButton } from '@/components/ui'
 
 const TOOLS: { id: ToolId; label: string; blurb: string }[] = [
@@ -17,6 +18,7 @@ const TOOLS: { id: ToolId; label: string; blurb: string }[] = [
   { id: 'split', label: 'Split', blurb: 'Stem separation' },
   { id: 'beat', label: 'Beat', blurb: 'BPM & key' },
   { id: 'voice', label: 'Voice', blurb: 'MIDI singing' },
+  { id: 'assistant', label: 'AI Assistant', blurb: 'Cloud or CPU LLM' },
   { id: 'diagnostics', label: 'Diagnostics', blurb: 'Health checks' },
 ]
 
@@ -33,6 +35,8 @@ function ToolView() {
       return <BeatPanel />
     case 'voice':
       return <VoicePanel />
+    case 'assistant':
+      return <AIAssistantPanel />
     case 'diagnostics':
       return <DiagnosticsPanel />
   }

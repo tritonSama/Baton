@@ -27,7 +27,14 @@ import {
   DEFAULT_VOICE_PARAMS,
 } from '@/engine'
 
-export type ToolId = 'autotune' | 'master' | 'split' | 'beat' | 'voice' | 'diagnostics'
+export type ToolId =
+  | 'autotune'
+  | 'master'
+  | 'split'
+  | 'beat'
+  | 'voice'
+  | 'assistant'
+  | 'diagnostics'
 
 type BatonState = {
   activeTool: ToolId
