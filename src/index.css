@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Cormorant Garamond", Georgia, serif;
+  --font-body: "DM Sans", system-ui, sans-serif;
+  --color-ink: #0c0b0a;
+  --color-ink-soft: #161412;
+  --color-panel: #1c1916;
+  --color-line: #2e2924;
+  --color-cream: #e8e0d4;
+  --color-muted: #9a9084;
+  --color-copper: #c47a3a;
+  --color-copper-bright: #e0944f;
+  --color-sage: #7a8f72;
+  --color-danger: #c45c4a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--color-cream);
+  background: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 90% 60% at 12% -10%, rgba(196, 122, 58, 0.18), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 100% 0%, rgba(122, 143, 114, 0.1), transparent 50%),
+    linear-gradient(180deg, #12100e 0%, #0c0b0a 40%, #0a0908 100%);
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes baton-sweep {
+  0%,
+  100% {
+    transform: rotate(-8deg);
+  }
+  50% {
+    transform: rotate(10deg);
+  }
+}
+
+@keyframes pulse-line {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+.animate-rise {
+  animation: rise-in 0.6s ease-out both;
+}
+
+.animate-baton {
+  animation: baton-sweep 4.5s ease-in-out infinite;
+  transform-origin: 50% 90%;
+}
+
+.animate-pulse-line {
+  animation: pulse-line 2.4s ease-in-out infinite;
+}
