@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 echo.
-echo  === Building Baton installer ===
+echo  === Building Baton Windows installer ===
 echo.
 
 where node >nul 2>nul
@@ -30,7 +30,7 @@ echo.
 echo  Done. Installers are in:
 echo    %~dp0release\
 echo.
-echo  Copy the .exe to another PC and run it — no Node.js required there.
+echo  Share these with other PCs — no Node.js required there.
 echo.
 explorer "%~dp0release"
 pause

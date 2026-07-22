@@ -7,6 +7,8 @@ import {
   synthesizeVoice,
   runEngineDiagnostics,
   createTone,
+  createSong,
+  formatSongLeadSheet,
   type AutotuneParams,
   type MasterParams,
   type SplitParams,
@@ -20,14 +22,18 @@ import {
   type DiagnosticReport,
   type MidiNote,
   type AudioBufferData,
+  type SongBrief,
+  type GeneratedSong,
   DEFAULT_AUTOTUNE_PARAMS,
   DEFAULT_MASTER_PARAMS,
   DEFAULT_SPLIT_PARAMS,
   DEFAULT_BEAT_PARAMS,
   DEFAULT_VOICE_PARAMS,
+  DEFAULT_SONG_BRIEF,
 } from '@/engine'
 
 export type ToolId =
+  | 'song'
   | 'autotune'
   | 'master'
   | 'split'
@@ -50,6 +56,10 @@ type BatonState = {
   voice: VoiceParams
   midiNotes: MidiNote[]
 
+  songBrief: SongBrief
+  song: GeneratedSong | null
+  songLeadSheet: string
+
   autotuneResult: AutotuneResult | null
   masterResult: MasterResult | null
   splitResult: SplitResult | null
@@ -65,6 +75,10 @@ type BatonState = {
   patchSplit: (p: Partial<SplitParams>) => void
   patchBeat: (p: Partial<BeatParams>) => void
   patchVoice: (p: Partial<VoiceParams>) => void
+  patchSongBrief: (p: Partial<SongBrief>) => void
+  generateSong: () => void
+  regenerateSongVariation: () => void
+  applySongToVoice: () => void
   setMidiFromLyrics: () => void
   runActiveTool: () => void
   runDiagnostics: () => void
@@ -76,7 +90,7 @@ function pushLog(logs: string[], line: string): string[] {
 }
 
 export const useBatonStore = create<BatonState>((set, get) => ({
-  activeTool: 'autotune',
+  activeTool: 'song',
   sampleRate: 44100,
   workingBuffer: null,
   bufferLabel: 'No audio loaded',
@@ -92,6 +106,10 @@ export const useBatonStore = create<BatonState>((set, get) => ({
     { midi: 64, velocity: 0.85, startSec: 0.4, durationSec: 0.4 },
     { midi: 67, velocity: 0.8, startSec: 0.8, durationSec: 0.6 },
   ],
+
+  songBrief: { ...DEFAULT_SONG_BRIEF },
+  song: null,
+  songLeadSheet: '',
 
   autotuneResult: null,
   masterResult: null,
@@ -131,6 +149,59 @@ export const useBatonStore = create<BatonState>((set, get) => ({
   patchSplit: (p) => set((s) => ({ split: { ...s.split, ...p } })),
   patchBeat: (p) => set((s) => ({ beat: { ...s.beat, ...p } })),
   patchVoice: (p) => set((s) => ({ voice: { ...s.voice, ...p } })),
+  patchSongBrief: (p) => set((s) => ({ songBrief: { ...s.songBrief, ...p } })),
+
+  generateSong: () => {
+    try {
+      const song = createSong(get().songBrief)
+      const chorus = song.lyrics.find((b) => b.section === 'Chorus')
+      set((s) => ({
+        song,
+        songLeadSheet: formatSongLeadSheet(song),
+        midiNotes: song.midiNotes.slice(0, 64),
+        voice: {
+          ...s.voice,
+          lyrics: chorus?.lines.join(' ') ?? s.voice.lyrics,
+        },
+        lastLog: pushLog(
+          s.lastLog,
+          `Song: "${song.brief.title}" · ${song.formSummary}`,
+        ),
+      }))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      set((st) => ({ lastLog: pushLog(st.lastLog, `ERROR: ${msg}`) }))
+    }
+  },
+
+  regenerateSongVariation: () => {
+    const nextSeed = (get().songBrief.seed + 1) % 10_000
+    set((s) => ({ songBrief: { ...s.songBrief, seed: nextSeed } }))
+    get().generateSong()
+  },
+
+  applySongToVoice: () => {
+    const song = get().song
+    if (!song) {
+      set((st) => ({
+        lastLog: pushLog(st.lastLog, 'ERROR: Generate a song first.'),
+      }))
+      return
+    }
+    const chorus = song.lyrics.find((b) => b.section === 'Chorus')
+    set((s) => ({
+      midiNotes: song.midiNotes.slice(0, 48),
+      voice: {
+        ...s.voice,
+        lyrics: chorus?.lines.join(' / ') ?? song.brief.theme,
+      },
+      activeTool: 'voice',
+      lastLog: pushLog(
+        s.lastLog,
+        `Sent "${song.brief.title}" melody + chorus lyrics to Voice`,
+      ),
+    }))
+  },
 
   setMidiFromLyrics: () => {
     const parts = get().voice.lyrics.trim().split(/[\s\-]+/).filter(Boolean)
@@ -150,6 +221,9 @@ export const useBatonStore = create<BatonState>((set, get) => ({
     const s = get()
     try {
       switch (s.activeTool) {
+        case 'song':
+          get().generateSong()
+          break
         case 'autotune': {
           if (!s.workingBuffer) throw new Error('Load audio first (Demo Tone).')
           const result = processAutotune(s.workingBuffer, s.autotune)
@@ -211,6 +285,8 @@ export const useBatonStore = create<BatonState>((set, get) => ({
           })
           break
         }
+        case 'assistant':
+          break
         case 'diagnostics':
           get().runDiagnostics()
           break

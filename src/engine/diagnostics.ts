@@ -9,6 +9,7 @@ import { processMaster, estimateLUFS } from './master'
 import { processSplit, listStemOutputs } from './stems'
 import { processBeat } from './beat'
 import { synthesizeVoice } from './voice'
+import { createSong, generateChordProgression } from './song'
 import { snapMidiToScale, midiToFrequency, frequencyToMidi } from './music/scales'
 
 export type DiagnosticStatus = 'pass' | 'fail' | 'warn'
@@ -280,6 +281,38 @@ export function runEngineDiagnostics(
         if (result.renderedNotes !== 0) throw new Error('Expected 0 rendered notes')
         if (result.warnings.length < 1) throw new Error('Expected a warning')
         return 'empty MIDI handled'
+      },
+    ),
+    runCheck(
+      'song.classic-progression',
+      'SongCreator',
+      'Classic C major progression',
+      'Song Creator builds I–V–vi–IV in C major.',
+      'Diatonic chord mapping broken — Song Creator loops will be wrong.',
+      () => {
+        const chords = generateChordProgression({
+          key: 'C',
+          scale: 'Major',
+          progressionStyle: 'Classic',
+          seed: 1,
+        })
+        const symbols = chords.map((c) => c.symbol).join('-')
+        if (symbols !== 'C-G-Am-F') throw new Error(`Expected C-G-Am-F, got ${symbols}`)
+        return symbols
+      },
+    ),
+    runCheck(
+      'song.full-generate',
+      'SongCreator',
+      'Full song has lyrics + melody',
+      'createSong returns sections, lyrics, and MIDI notes.',
+      'Song Creator pipeline broken — New Song will be empty.',
+      () => {
+        const song = createSong({ title: 'Diag Song', theme: 'signal' })
+        if (song.lyrics.length < 4) throw new Error('Too few lyric sections')
+        if (song.midiNotes.length < 8) throw new Error('Melody too short')
+        if (song.method.length < 4) throw new Error('Method steps missing')
+        return `${song.sections.length} sections, ${song.midiNotes.length} notes`
       },
     ),
   ]

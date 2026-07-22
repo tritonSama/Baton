@@ -7,10 +7,20 @@
   "private": true,
   "type": "module",
   "main": "dist-electron/main.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tritonSama/Baton.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tritonSama/Baton/issues"
+  },
+  "homepage": "https://github.com/tritonSama/Baton#readme",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
+    "setup": "npm install && npm test",
+    "start": "npm run dev",
     "dev": "vite",
     "dev:electron": "vite --mode electron",
     "build": "tsc --noEmit && vite build",

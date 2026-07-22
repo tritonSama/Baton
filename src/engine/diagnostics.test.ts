@@ -24,10 +24,18 @@ describe('Engine diagnostics (smoke suite for “something stopped working”)',
     }
   })
 
-  it('covers Autotune, Master, Split, Beat, and Voice engines', () => {
+  it('covers Autotune, Master, Split, Beat, Voice, and SongCreator engines', () => {
     const report = runEngineDiagnostics()
     const engines = new Set(report.checks.map((c) => c.engine))
-    for (const needed of ['Autotune', 'Master', 'Split', 'Beat', 'Voice', 'Scales']) {
+    for (const needed of [
+      'Autotune',
+      'Master',
+      'Split',
+      'Beat',
+      'Voice',
+      'Scales',
+      'SongCreator',
+    ]) {
       expect(engines.has(needed), `Missing diagnostics for ${needed}`).toBe(true)
     }
   })

@@ -10,9 +10,11 @@ import {
   VoicePanel,
 } from '@/components/ToolPanels'
 import { AIAssistantPanel } from '@/components/AIAssistantPanel'
+import { SongCreatorPanel } from '@/components/SongCreatorPanel'
 import { PrimaryButton } from '@/components/ui'
 
 const TOOLS: { id: ToolId; label: string; blurb: string }[] = [
+  { id: 'song', label: 'Song Creator', blurb: 'Write a new song' },
   { id: 'autotune', label: 'Autotune', blurb: 'Pitch correction' },
   { id: 'master', label: 'Master', blurb: 'Loudness & polish' },
   { id: 'split', label: 'Split', blurb: 'Stem separation' },
@@ -25,6 +27,8 @@ const TOOLS: { id: ToolId; label: string; blurb: string }[] = [
 function ToolView() {
   const tool = useBatonStore((s) => s.activeTool)
   switch (tool) {
+    case 'song':
+      return <SongCreatorPanel />
     case 'autotune':
       return <AutotunePanel />
     case 'master':
@@ -50,10 +54,12 @@ export default function App() {
   const loadDemoPulse = useBatonStore((s) => s.loadDemoPulse)
   const runDiagnostics = useBatonStore((s) => s.runDiagnostics)
   const lastLog = useBatonStore((s) => s.lastLog)
+  const generateSong = useBatonStore((s) => s.generateSong)
 
   useEffect(() => {
     loadDemoTone(440)
-  }, [loadDemoTone])
+    generateSong()
+  }, [loadDemoTone, generateSong])
 
   return (
     <div className="flex min-h-full flex-col">
@@ -71,11 +77,7 @@ export default function App() {
                 fill="none"
                 aria-hidden
               >
-                <path
-                  d="M20 4 L22 28 L18 28 Z"
-                  fill="currentColor"
-                  opacity="0.9"
-                />
+                <path d="M20 4 L22 28 L18 28 Z" fill="currentColor" opacity="0.9" />
                 <circle cx="20" cy="32" r="3.5" fill="currentColor" />
               </svg>
               <h1 className="font-display text-5xl font-semibold tracking-tight text-[var(--color-cream)] md:text-6xl">
@@ -83,10 +85,13 @@ export default function App() {
               </h1>
             </div>
             <p className="max-w-md text-base leading-relaxed text-[var(--color-muted)]">
-              AI-powered mastering, vocals, and stems — one engine for studio and stage.
+              Write songs, shape vocals, and master — one studio from idea to polish.
             </p>
           </div>
           <div className="animate-rise flex flex-wrap gap-2" style={{ animationDelay: '120ms' }}>
+            <PrimaryButton onClick={() => setTool('song')} variant="ghost">
+              New Song
+            </PrimaryButton>
             <PrimaryButton onClick={() => loadDemoTone(440)} variant="ghost">
               Demo Tone
             </PrimaryButton>
@@ -129,7 +134,7 @@ export default function App() {
               Activity
             </h2>
             <ul className="max-h-80 space-y-2 overflow-y-auto font-mono text-[11px] leading-relaxed text-[var(--color-muted)]">
-              {lastLog.length === 0 && <li>Idle — load audio or run a tool.</li>}
+              {lastLog.length === 0 && <li>Idle — create a song or run a tool.</li>}
               {lastLog.map((line) => (
                 <li
                   key={line}
