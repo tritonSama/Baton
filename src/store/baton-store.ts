@@ -9,6 +9,13 @@ import {
   createTone,
   createSong,
   formatSongLeadSheet,
+  createEmptyPipeline,
+  preprocessAudio,
+  suggestAnnotations,
+  runTrainingJob,
+  evaluateTraining,
+  formatTrainingPlan,
+  DEFAULT_TRAINING_CONFIG,
   type AutotuneParams,
   type MasterParams,
   type SplitParams,
@@ -24,6 +31,12 @@ import {
   type AudioBufferData,
   type SongBrief,
   type GeneratedSong,
+  type TrainingConfig,
+  type TrainingPipelineResult,
+  type FeatureAnnotation,
+  type PreprocessOptions,
+  type TrainHyperparams,
+  type TrainingStepId,
   DEFAULT_AUTOTUNE_PARAMS,
   DEFAULT_MASTER_PARAMS,
   DEFAULT_SPLIT_PARAMS,
@@ -34,6 +47,7 @@ import {
 
 export type ToolId =
   | 'song'
+  | 'train'
   | 'autotune'
   | 'master'
   | 'split'
@@ -60,6 +74,10 @@ type BatonState = {
   song: GeneratedSong | null
   songLeadSheet: string
 
+  trainingConfig: TrainingConfig
+  trainingPipeline: TrainingPipelineResult
+  trainingHumanFeedback: number | null
+
   autotuneResult: AutotuneResult | null
   masterResult: MasterResult | null
   splitResult: SplitResult | null
@@ -79,6 +97,17 @@ type BatonState = {
   generateSong: () => void
   regenerateSongVariation: () => void
   applySongToVoice: () => void
+  patchTrainingConfig: (p: Partial<TrainingConfig>) => void
+  patchTrainingAnnotation: (p: Partial<FeatureAnnotation>) => void
+  patchTrainingPreprocess: (p: Partial<PreprocessOptions>) => void
+  patchTrainingHyperparams: (p: Partial<TrainHyperparams>) => void
+  runTrainingPreprocess: () => void
+  autoAnnotateFromBuffer: () => void
+  runTrainingJobStep: () => void
+  runTrainingEvaluate: () => void
+  setTrainingHumanFeedback: (v: number | null) => void
+  resetTrainingPipeline: () => void
+  markTrainingStep: (step: TrainingStepId) => void
   setMidiFromLyrics: () => void
   runActiveTool: () => void
   runDiagnostics: () => void
@@ -110,6 +139,18 @@ export const useBatonStore = create<BatonState>((set, get) => ({
   songBrief: { ...DEFAULT_SONG_BRIEF },
   song: null,
   songLeadSheet: '',
+
+  trainingConfig: {
+    ...DEFAULT_TRAINING_CONFIG,
+    preprocess: { ...DEFAULT_TRAINING_CONFIG.preprocess },
+    annotation: {
+      ...DEFAULT_TRAINING_CONFIG.annotation,
+      instrumentation: [...DEFAULT_TRAINING_CONFIG.annotation.instrumentation],
+    },
+    hyperparams: { ...DEFAULT_TRAINING_CONFIG.hyperparams },
+  },
+  trainingPipeline: createEmptyPipeline(),
+  trainingHumanFeedback: null,
 
   autotuneResult: null,
   masterResult: null,
@@ -203,6 +244,201 @@ export const useBatonStore = create<BatonState>((set, get) => ({
     }))
   },
 
+  patchTrainingConfig: (p) =>
+    set((s) => ({
+      trainingConfig: { ...s.trainingConfig, ...p },
+      trainingPipeline: {
+        ...s.trainingPipeline,
+        config: { ...s.trainingConfig, ...p },
+        exportPlan: formatTrainingPlan(
+          { ...s.trainingConfig, ...p },
+          s.trainingPipeline.preprocess,
+          s.trainingPipeline.train,
+          s.trainingPipeline.evaluation,
+        ),
+      },
+    })),
+
+  patchTrainingAnnotation: (p) =>
+    set((s) => {
+      const annotation = { ...s.trainingConfig.annotation, ...p }
+      const trainingConfig = { ...s.trainingConfig, annotation }
+      return {
+        trainingConfig,
+        trainingPipeline: {
+          ...s.trainingPipeline,
+          config: trainingConfig,
+          exportPlan: formatTrainingPlan(
+            trainingConfig,
+            s.trainingPipeline.preprocess,
+            s.trainingPipeline.train,
+            s.trainingPipeline.evaluation,
+          ),
+        },
+      }
+    }),
+
+  patchTrainingPreprocess: (p) =>
+    set((s) => {
+      const preprocess = { ...s.trainingConfig.preprocess, ...p }
+      const trainingConfig = { ...s.trainingConfig, preprocess }
+      return {
+        trainingConfig,
+        trainingPipeline: {
+          ...s.trainingPipeline,
+          config: trainingConfig,
+          exportPlan: formatTrainingPlan(
+            trainingConfig,
+            s.trainingPipeline.preprocess,
+            s.trainingPipeline.train,
+            s.trainingPipeline.evaluation,
+          ),
+        },
+      }
+    }),
+
+  patchTrainingHyperparams: (p) =>
+    set((s) => {
+      const hyperparams = { ...s.trainingConfig.hyperparams, ...p }
+      const trainingConfig = { ...s.trainingConfig, hyperparams }
+      return {
+        trainingConfig,
+        trainingPipeline: {
+          ...s.trainingPipeline,
+          config: trainingConfig,
+          exportPlan: formatTrainingPlan(
+            trainingConfig,
+            s.trainingPipeline.preprocess,
+            s.trainingPipeline.train,
+            s.trainingPipeline.evaluation,
+          ),
+        },
+      }
+    }),
+
+  markTrainingStep: (step) =>
+    set((s) => ({
+      trainingPipeline: {
+        ...s.trainingPipeline,
+        completedSteps: s.trainingPipeline.completedSteps.includes(step)
+          ? s.trainingPipeline.completedSteps
+          : [...s.trainingPipeline.completedSteps, step],
+      },
+    })),
+
+  runTrainingPreprocess: () => {
+    try {
+      const buffer = get().workingBuffer
+      if (!buffer) throw new Error('Load audio first (Demo Tone / Song → Voice).')
+      const preprocess = preprocessAudio(buffer, get().trainingConfig.preprocess)
+      get().markTrainingStep('preprocess')
+      set((s) => ({
+        trainingPipeline: {
+          ...s.trainingPipeline,
+          preprocess,
+          exportPlan: formatTrainingPlan(
+            s.trainingConfig,
+            preprocess,
+            s.trainingPipeline.train,
+            s.trainingPipeline.evaluation,
+          ),
+        },
+        lastLog: pushLog(s.lastLog, `Train preprocess: ${preprocess.summary}`),
+      }))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      set((st) => ({ lastLog: pushLog(st.lastLog, `ERROR: ${msg}`) }))
+    }
+  },
+
+  autoAnnotateFromBuffer: () => {
+    try {
+      const buffer = get().workingBuffer
+      if (!buffer) throw new Error('Load audio first to auto-annotate.')
+      const suggested = suggestAnnotations(buffer)
+      get().patchTrainingAnnotation(suggested)
+      get().markTrainingStep('annotate')
+      set((s) => ({
+        lastLog: pushLog(
+          s.lastLog,
+          `Train annotate: ${suggested.bpm ?? '?'} BPM · ${suggested.key ?? '?'} ${suggested.scale ?? ''}`,
+        ),
+      }))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      set((st) => ({ lastLog: pushLog(st.lastLog, `ERROR: ${msg}`) }))
+    }
+  },
+
+  runTrainingJobStep: () => {
+    try {
+      const prep = get().trainingPipeline.preprocess
+      if (!prep) throw new Error('Run preprocessing before training.')
+      get().markTrainingStep('model')
+      get().markTrainingStep('annotate')
+      const train = runTrainingJob(get().trainingConfig, prep)
+      get().markTrainingStep('train')
+      set((s) => ({
+        trainingPipeline: {
+          ...s.trainingPipeline,
+          train,
+          exportPlan: formatTrainingPlan(
+            s.trainingConfig,
+            prep,
+            train,
+            s.trainingPipeline.evaluation,
+          ),
+        },
+        lastLog: pushLog(
+          s.lastLog,
+          `Train: ${train.checkpointName} · loss ${train.finalLoss}`,
+        ),
+      }))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      set((st) => ({ lastLog: pushLog(st.lastLog, `ERROR: ${msg}`) }))
+    }
+  },
+
+  runTrainingEvaluate: () => {
+    try {
+      const { preprocess, train } = get().trainingPipeline
+      if (!preprocess || !train) {
+        throw new Error('Preprocess and train before evaluation.')
+      }
+      const evaluation = evaluateTraining(
+        get().trainingConfig,
+        preprocess,
+        train,
+        get().trainingHumanFeedback,
+      )
+      get().markTrainingStep('evaluate')
+      set((s) => ({
+        trainingPipeline: {
+          ...s.trainingPipeline,
+          evaluation,
+          exportPlan: formatTrainingPlan(s.trainingConfig, preprocess, train, evaluation),
+        },
+        lastLog: pushLog(
+          s.lastLog,
+          `Train eval: ${Math.round(evaluation.overall * 100)}% · ${evaluation.passed ? 'pass' : 'refine'}`,
+        ),
+      }))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      set((st) => ({ lastLog: pushLog(st.lastLog, `ERROR: ${msg}`) }))
+    }
+  },
+
+  setTrainingHumanFeedback: (v) => set({ trainingHumanFeedback: v }),
+
+  resetTrainingPipeline: () =>
+    set((s) => ({
+      trainingPipeline: createEmptyPipeline(s.trainingConfig),
+      trainingHumanFeedback: null,
+      lastLog: pushLog(s.lastLog, 'Train pipeline reset'),
+    })),
+
   setMidiFromLyrics: () => {
     const parts = get().voice.lyrics.trim().split(/[\s\-]+/).filter(Boolean)
     const notes: MidiNote[] = parts.map((_, i) => ({
@@ -223,6 +459,9 @@ export const useBatonStore = create<BatonState>((set, get) => ({
       switch (s.activeTool) {
         case 'song':
           get().generateSong()
+          break
+        case 'train':
+          get().runTrainingPreprocess()
           break
         case 'autotune': {
           if (!s.workingBuffer) throw new Error('Load audio first (Demo Tone).')

@@ -10,6 +10,12 @@ import { processSplit, listStemOutputs } from './stems'
 import { processBeat } from './beat'
 import { synthesizeVoice } from './voice'
 import { createSong, generateChordProgression } from './song'
+import {
+  createEmptyPipeline,
+  preprocessAudio,
+  runTrainingJob,
+  DEFAULT_TRAINING_CONFIG,
+} from './training'
 import { snapMidiToScale, midiToFrequency, frequencyToMidi } from './music/scales'
 
 export type DiagnosticStatus = 'pass' | 'fail' | 'warn'
@@ -313,6 +319,37 @@ export function runEngineDiagnostics(
         if (song.midiNotes.length < 8) throw new Error('Melody too short')
         if (song.method.length < 4) throw new Error('Method steps missing')
         return `${song.sections.length} sections, ${song.midiNotes.length} notes`
+      },
+    ),
+    runCheck(
+      'training.five-step-method',
+      'Training',
+      'Training method has five steps',
+      'Pipeline method lists preprocess → evaluate.',
+      'Training Studio method missing — UI wizard will be incomplete.',
+      () => {
+        const pipeline = createEmptyPipeline()
+        if (pipeline.method.length !== 5) {
+          throw new Error(`Expected 5 method steps, got ${pipeline.method.length}`)
+        }
+        return pipeline.method.map((m) => m.slice(0, 24)).join(' | ')
+      },
+    ),
+    runCheck(
+      'training.lora-job',
+      'Training',
+      'LoRA fine-tune job completes',
+      'Preprocess + LoRA train produces a checkpoint on demo audio.',
+      'Training job path broken — Train tab cannot fine-tune.',
+      () => {
+        const tone = createTone(sampleRate, 1, 440, 0.35)
+        const prep = preprocessAudio(tone, DEFAULT_TRAINING_CONFIG.preprocess)
+        const train = runTrainingJob(DEFAULT_TRAINING_CONFIG, prep)
+        if (train.status !== 'completed') throw new Error('Train did not complete')
+        if (!train.checkpointName.endsWith('.batontrain')) {
+          throw new Error('Missing checkpoint name')
+        }
+        return `${train.checkpointName} loss=${train.finalLoss}`
       },
     ),
   ]

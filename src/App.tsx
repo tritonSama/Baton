@@ -11,10 +11,12 @@ import {
 } from '@/components/ToolPanels'
 import { AIAssistantPanel } from '@/components/AIAssistantPanel'
 import { SongCreatorPanel } from '@/components/SongCreatorPanel'
+import { TrainingPanel } from '@/components/TrainingPanel'
 import { PrimaryButton } from '@/components/ui'
 
 const TOOLS: { id: ToolId; label: string; blurb: string }[] = [
   { id: 'song', label: 'Song Creator', blurb: 'Write a new song' },
+  { id: 'train', label: 'Train', blurb: 'ML fine-tune method' },
   { id: 'autotune', label: 'Autotune', blurb: 'Pitch correction' },
   { id: 'master', label: 'Master', blurb: 'Loudness & polish' },
   { id: 'split', label: 'Split', blurb: 'Stem separation' },
@@ -29,6 +31,8 @@ function ToolView() {
   switch (tool) {
     case 'song':
       return <SongCreatorPanel />
+    case 'train':
+      return <TrainingPanel />
     case 'autotune':
       return <AutotunePanel />
     case 'master':
