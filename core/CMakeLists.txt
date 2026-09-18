@@ -13,7 +13,7 @@ juce_add_plugin(BatonAutotune
     COMPANY_NAME "Baton"
     PLUGIN_MANUFACTURER_CODE Batn
     PLUGIN_CODE Batu
-    FORMATS VST3 Standalone
+    FORMATS VST3 CLAP Standalone
     NEEDS_WEB_BROWSER FALSE
     PRODUCT_NAME "Baton Autotune"
 )

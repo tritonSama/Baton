@@ -8,3 +8,4 @@ coverage
 *.log
 .vite
 core/build/
+release/
