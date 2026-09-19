@@ -40,4 +40,10 @@ target_compile_definitions(BatonAutotune PUBLIC
 # when aubio/rubberband/WORLD are fully integrated.
 # For now, we will include the stub headers directly.
 
-target_include_directories(BatonAutotune PRIVATE src)
+target_include_directories(BatonAutotune PRIVATE
+    src
+    src/ai
+    src/voice
+    ../integration
+    ../cloud
+)
