@@ -110,6 +110,18 @@ More detail: [INSTALL.md](./INSTALL.md)
 
 ---
 
+## Development Roadmap (Agent Guide)
+
+The project is structured into phases to establish a fully working app and expand it over time. **For detailed agent instructions, see [AGENTS.md](./AGENTS.md).** Future AI agents should consult `AGENTS.md` and `Baton.md` to identify missing pieces and build out features according to this roadmap:
+
+*   **Phase 1: Foundation:** Core C++ DSP framework, I/O, and the first real-time plugin (Autotune).
+*   **Phase 2: AI Core:** Integrating AI models (Mastering, Stem Separation) using ONNX with GPU support.
+*   **Phase 3: Vocal Engine:** Complex vocal synthesis, voice cloning (RVC, SO-VITS), and speech synthesis APIs.
+*   **Phase 4: Deep FL Integration:** Tight coupling with DAW workflows (ARA2, advanced routing, MIDI scripting).
+*   **Phase 5: Polish & Scale:** Expanding the standalone app to a full DAW and adding cloud collaboration.
+
+---
+
 ## Spec
 
 Product design notes live in [Baton.md](./Baton.md).
