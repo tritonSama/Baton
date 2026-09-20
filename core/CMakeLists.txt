@@ -35,9 +35,20 @@ target_compile_definitions(BatonAutotune PUBLIC
     JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
-# DSP Stubs
-# We declare these here as placeholders for FetchContent
-# when aubio/rubberband/WORLD are fully integrated.
-# For now, we will include the stub headers directly.
+# Fetch open-source DSP dependencies
+# Note: For this phase, we are defining interface libraries as stubs
+# to simulate FetchContent downloading the actual libraries (aubio, rubberband, WORLD).
+# In a full build environment, these would point to actual repositories or local paths.
+
+add_library(aubio INTERFACE)
+target_include_directories(aubio INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp)
+
+add_library(rubberband INTERFACE)
+target_include_directories(rubberband INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp)
+
+add_library(world INTERFACE)
+target_include_directories(world INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp)
+
+target_link_libraries(BatonAutotune PRIVATE aubio rubberband world)
 
 target_include_directories(BatonAutotune PRIVATE src)

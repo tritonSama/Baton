@@ -7,6 +7,8 @@ public:
         : m_sampleRate(sampleRate), m_bufferSize(bufferSize) {}
 
     void process(const float* buffer, int numSamples) {
+        (void)buffer;
+        (void)numSamples;
         // Stub for aubio integration (YIN algorithm)
     }
 

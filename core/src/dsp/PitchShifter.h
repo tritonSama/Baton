@@ -6,10 +6,13 @@ public:
         : m_sampleRate(sampleRate), m_numChannels(numChannels) {}
 
     void setPitchShift(float semitones) {
+        (void)semitones;
         // Stub for Rubber Band Library
     }
 
     void process(float* const* buffers, int numSamples) {
+        (void)buffers;
+        (void)numSamples;
         // Stub
     }
 

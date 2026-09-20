@@ -19,12 +19,39 @@ juce::AudioProcessorValueTreeState::ParameterLayout BatonAudioProcessor::createP
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID("retune_speed", 1), "Retune Speed", juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f), 50.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID("correction_amount", 1), "Correction Amount", juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f), 100.0f));
-    params.push_back (std::make_unique<juce::AudioParameterInt> (juce::ParameterID("key", 1), "Key", 0, 11, 0)); // 0 = C, 1 = C#, etc.
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID("scale", 1), "Scale", juce::StringArray{"Major", "Minor", "Chromatic"}, 2));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID("formant_shift", 1), "Formant Shift", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID("formant_preserve", 1), "Formant Preserve", true));
+    // Pitch Correction Parameters
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID("retune_speed", 1), "Retune Speed",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f), 50.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String (value, 1) + " ms"; }));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID("correction_amount", 1), "Correction Amount",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f), 100.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String (value, 0) + " %"; }));
+
+    // Music Theory Parameters
+    params.push_back (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID("key", 1), "Key", 0, 11, 0,
+        juce::String(), [](int value, int) {
+            const char* keys[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+            return juce::String(keys[value]);
+        }));
+
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID("scale", 1), "Scale", juce::StringArray{"Major", "Minor", "Chromatic"}, 2));
+
+    // Timbre Parameters
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID("formant_shift", 1), "Formant Shift",
+        juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String (value, 1) + " st"; }));
+
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID("formant_preserve", 1), "Formant Preserve", true));
 
     return { params.begin(), params.end() };
 }
@@ -42,6 +69,7 @@ void BatonAudioProcessor::releaseResources()
 
 bool BatonAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
+    juce::ignoreUnused(layouts);
     return true;
 }
 
@@ -59,6 +87,20 @@ void BatonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     auto correctionAmount = correctionAmountParam ? correctionAmountParam->load() : 100.0f;
     auto formantShift = formantShiftParam ? formantShiftParam->load() : 0.0f;
 
+    // Handle MIDI input (e.g. for target pitch in Autotune)
+    for (const auto metadata : midiMessages)
+    {
+        auto msg = metadata.getMessage();
+        if (msg.isNoteOn())
+        {
+            // Note on logic
+        }
+        else if (msg.isNoteOff())
+        {
+            // Note off logic
+        }
+    }
+
     // DSP processing chain stubs
     if (totalNumInputChannels > 0) {
         float* channelData = buffer.getWritePointer(0);
@@ -66,13 +108,18 @@ void BatonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         float* const* buffers = buffer.getArrayOfWritePointers();
 
         // 1. Pitch detection
-        if (pitchDetector)
+        if (pitchDetector) {
             pitchDetector->process(channelData, numSamples);
+            // Example of using the detected pitch (stub logic)
+            // auto currentPitch = pitchDetector->getCurrentPitch();
+        }
 
         // 2. Pitch correction / shifting
         if (pitchShifter) {
             // Apply logic based on retuneSpeed and correctionAmount
-            pitchShifter->setPitchShift(0.0f); // Stub logic
+            // Basic example: mapping 0-100 range to dummy semitones
+            float shiftAmount = (correctionAmount / 100.0f) * (retuneSpeed / 100.0f);
+            pitchShifter->setPitchShift(shiftAmount); // Stub logic
             pitchShifter->process(buffers, numSamples);
         }
 
@@ -82,6 +129,17 @@ void BatonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
             formantShifter->process(buffers, numSamples);
         }
     }
+}
+
+void BatonAudioProcessor::processBlock (juce::AudioBuffer<double>& buffer, juce::MidiBuffer& midiMessages)
+{
+    juce::ignoreUnused(midiMessages);
+    juce::ScopedNoDenormals noDenormals;
+    auto totalNumInputChannels  = getTotalNumInputChannels();
+    auto totalNumOutputChannels = getTotalNumOutputChannels();
+
+    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+        buffer.clear (i, 0, buffer.getNumSamples());
 }
 
 juce::AudioProcessorEditor* BatonAudioProcessor::createEditor()
@@ -101,7 +159,8 @@ const juce::String BatonAudioProcessor::getName() const
 
 bool BatonAudioProcessor::acceptsMidi() const
 {
-    return false;
+    // Autotune can optionally accept MIDI to define the target pitch
+    return true;
 }
 
 bool BatonAudioProcessor::producesMidi() const
@@ -131,15 +190,18 @@ int BatonAudioProcessor::getCurrentProgram()
 
 void BatonAudioProcessor::setCurrentProgram (int index)
 {
+    juce::ignoreUnused(index);
 }
 
 const juce::String BatonAudioProcessor::getProgramName (int index)
 {
+    juce::ignoreUnused(index);
     return {};
 }
 
 void BatonAudioProcessor::changeProgramName (int index, const juce::String& newName)
 {
+    juce::ignoreUnused(index, newName);
 }
 
 void BatonAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
