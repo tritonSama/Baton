@@ -125,6 +125,7 @@ void BatonAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
         // 3. Formant preservation/shifting
         if (formantShifter) {
+            formantShifter->setNumChannels(totalNumInputChannels);
             formantShifter->setFormantShift(formantShift);
             formantShifter->process(buffers, numSamples);
         }
