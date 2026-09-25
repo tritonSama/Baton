@@ -16,6 +16,11 @@ import {
   evaluateTraining,
   formatTrainingPlan,
   DEFAULT_TRAINING_CONFIG,
+  createDefaultDeck,
+  createYouTubeTrack,
+  calculateEffectiveBpm,
+  calculateAutoMixTransition,
+  DEMO_YOUTUBE_TRACKS,
   type AutotuneParams,
   type MasterParams,
   type SplitParams,
@@ -37,6 +42,10 @@ import {
   type PreprocessOptions,
   type TrainHyperparams,
   type TrainingStepId,
+  type DJDeckState,
+  type AutoMixerConfig,
+  type YouTubeTrack,
+  type FXType,
   DEFAULT_AUTOTUNE_PARAMS,
   DEFAULT_MASTER_PARAMS,
   DEFAULT_SPLIT_PARAMS,
@@ -46,6 +55,7 @@ import {
 } from '@/engine'
 
 export type ToolId =
+  | 'vinyl'
   | 'song'
   | 'train'
   | 'autotune'
@@ -62,6 +72,17 @@ type BatonState = {
   workingBuffer: AudioBufferData | null
   bufferLabel: string
   lastLog: string[]
+
+  // Vinyl DJ State
+  deckA: DJDeckState
+  deckB: DJDeckState
+  crossfader: number // -1 (Deck A) to +1 (Deck B)
+  masterVolume: number
+  headphoneVolume: number
+  headphoneMix: number
+  autoMixer: AutoMixerConfig
+  djQueue: YouTubeTrack[]
+  ytSearchResults: YouTubeTrack[]
 
   autotune: AutotuneParams
   master: MasterParams
@@ -88,6 +109,25 @@ type BatonState = {
   setTool: (tool: ToolId) => void
   loadDemoTone: (freqHz?: number) => void
   loadDemoPulse: (bpm?: number) => void
+
+  // Vinyl DJ Actions
+  loadTrackToDeck: (deckId: 'A' | 'B', track: YouTubeTrack) => void
+  toggleDeckPlay: (deckId: 'A' | 'B') => void
+  setDeckCurrentTime: (deckId: 'A' | 'B', timeSec: number) => void
+  setDeckPitch: (deckId: 'A' | 'B', pitchPercent: number) => void
+  setDeckEQ: (deckId: 'A' | 'B', eq: Partial<DJDeckState['eq']>) => void
+  toggleHeadphoneCue: (deckId: 'A' | 'B') => void
+  setDeckVolume: (deckId: 'A' | 'B', volume: number) => void
+  triggerHotCue: (deckId: 'A' | 'B', cueId: number) => void
+  toggleDeckLoop: (deckId: 'A' | 'B', lengthBeats?: number) => void
+  setDeckFx: (deckId: 'A' | 'B', fx: FXType) => void
+  setCrossfader: (value: number) => void
+  patchAutoMixer: (p: Partial<AutoMixerConfig>) => void
+  triggerAutoMix: () => void
+  addYouTubeTrackToQueue: (input: string | YouTubeTrack) => void
+  removeFromQueue: (index: number) => void
+  searchYouTubeTracks: (query: string) => void
+
   patchAutotune: (p: Partial<AutotuneParams>) => void
   patchMaster: (p: Partial<MasterParams>) => void
   patchSplit: (p: Partial<SplitParams>) => void
@@ -118,12 +158,41 @@ function pushLog(logs: string[], line: string): string[] {
   return [`[${stamp}] ${line}`, ...logs].slice(0, 40)
 }
 
+const initialDeckA = createDefaultDeck('A')
+initialDeckA.track = DEMO_YOUTUBE_TRACKS[0]!
+initialDeckA.durationSec = DEMO_YOUTUBE_TRACKS[0]!.durationSec
+initialDeckA.actualBpm = DEMO_YOUTUBE_TRACKS[0]!.bpm
+
+const initialDeckB = createDefaultDeck('B')
+initialDeckB.track = DEMO_YOUTUBE_TRACKS[1]!
+initialDeckB.durationSec = DEMO_YOUTUBE_TRACKS[1]!.durationSec
+initialDeckB.actualBpm = DEMO_YOUTUBE_TRACKS[1]!.bpm
+
 export const useBatonStore = create<BatonState>((set, get) => ({
-  activeTool: 'song',
+  activeTool: 'vinyl',
   sampleRate: 44100,
   workingBuffer: null,
-  bufferLabel: 'No audio loaded',
+  bufferLabel: 'Vinyl DJ ready',
   lastLog: [],
+
+  // Vinyl State Defaults
+  deckA: initialDeckA,
+  deckB: initialDeckB,
+  crossfader: -1, // Full Deck A
+  masterVolume: 1.0,
+  headphoneVolume: 0.8,
+  headphoneMix: 0,
+  autoMixer: {
+    enabled: true,
+    triggerBeforeEndSec: 16,
+    transitionDurationSec: 12,
+    curve: 'smooth',
+    inTransition: false,
+    progress: 0,
+    targetDeck: 'B',
+  },
+  djQueue: DEMO_YOUTUBE_TRACKS.slice(2),
+  ytSearchResults: DEMO_YOUTUBE_TRACKS,
 
   autotune: { ...DEFAULT_AUTOTUNE_PARAMS },
   master: { ...DEFAULT_MASTER_PARAMS },
@@ -160,6 +229,229 @@ export const useBatonStore = create<BatonState>((set, get) => ({
   diagnostics: null,
 
   setTool: (tool) => set({ activeTool: tool }),
+
+  // Vinyl DJ Actions
+  loadTrackToDeck: (deckId, track) =>
+    set((s) => {
+      const deckKey = deckId === 'A' ? 'deckA' : 'deckB'
+      const updatedDeck: DJDeckState = {
+        ...s[deckKey],
+        track,
+        currentTimeSec: 0,
+        durationSec: track.durationSec,
+        actualBpm: calculateEffectiveBpm(track.bpm, s[deckKey].pitchPercent),
+        isPlaying: false,
+      }
+      return {
+        [deckKey]: updatedDeck,
+        lastLog: pushLog(s.lastLog, `Vinyl: Loaded "${track.title}" onto Deck ${deckId}`),
+      }
+    }),
+
+  toggleDeckPlay: (deckId) =>
+    set((s) => {
+      const deckKey = deckId === 'A' ? 'deckA' : 'deckB'
+      const isPlaying = !s[deckKey].isPlaying
+      return {
+        [deckKey]: { ...s[deckKey], isPlaying },
+        lastLog: pushLog(
+          s.lastLog,
+          `Vinyl: Deck ${deckId} ${isPlaying ? 'PLAYING' : 'PAUSED'}`,
+        ),
+      }
+    }),
+
+  setDeckCurrentTime: (deckId, timeSec) =>
+    set((s) => {
+      const deckKey = deckId === 'A' ? 'deckA' : 'deckB'
+      const deck = s[deckKey]
+      const clamped = Math.max(0, Math.min(deck.durationSec, timeSec))
+
+      // Check Auto-mixer trigger if playing
+      let autoMixer = s.autoMixer
+      if (deck.isPlaying && autoMixer.enabled && !autoMixer.inTransition) {
+        const transitionCheck = calculateAutoMixTransition(
+          { ...deck, currentTimeSec: clamped },
+          autoMixer,
+          s.crossfader
+        )
+        if (transitionCheck.shouldStartTransition) {
+          const nextDeckId = deckId === 'A' ? 'B' : 'A'
+          const nextDeckKey = nextDeckId === 'A' ? 'deckA' : 'deckB'
+          autoMixer = {
+            ...autoMixer,
+            inTransition: true,
+            progress: 0,
+            targetDeck: nextDeckId,
+          }
+          // Ensure target deck is playing
+          s[nextDeckKey].isPlaying = true
+        }
+      }
+
+      return {
+        [deckKey]: { ...deck, currentTimeSec: clamped },
+        autoMixer,
+      }
+    }),
+
+  setDeckPitch: (deckId, pitchPercent) =>
+    set((s) => {
+      const deckKey = deckId === 'A' ? 'deckA' : 'deckB'
+      const deck = s[deckKey]
+      const baseBpm = deck.track?.bpm || 120
+      const actualBpm = calculateEffectiveBpm(baseBpm, pitchPercent)
+      return {
+        [deckKey]: { ...deck, pitchPercent, actualBpm },
+      }
+    }),
+
+  setDeckEQ: (deckId, eq) =>
+    set((s) => {
+      const deckKey = deckId === 'A' ? 'deckA' : 'deckB'
+      const deck = s[deckKey]
+      return {
+        [deckKey]: { ...deck, eq: { ...deck.eq, ...eq } },
+      }
+    }),
+
+  toggleHeadphoneCue: (deckId) =>
+    set((s) => {
+      const deckKey = deckId === 'A' ? 'deckA' : 'deckB'
+      const deck = s[deckKey]
+      const headphoneCue = !deck.headphoneCue
+      return {
+        [deckKey]: { ...deck, headphoneCue },
+        lastLog: pushLog(
+          s.lastLog,
+          `Vinyl: Headphone Preview Cue Deck ${deckId} ${headphoneCue ? 'ON' : 'OFF'}`,
+        ),
+      }
+    }),
+
+  setDeckVolume: (deckId, volume) =>
+    set((state) => {
+      const deckKey = deckId === 'A' ? 'deckA' : 'deckB'
+      return {
+        [deckKey]: { ...state[deckKey], volume },
+      }
+    }),
+
+  triggerHotCue: (deckId, cueId) =>
+    set((s) => {
+      const deckKey = deckId === 'A' ? 'deckA' : 'deckB'
+      const deck = s[deckKey]
+      const hotCue = deck.hotCues.find((c) => c.id === cueId)
+      if (!hotCue) return {}
+      return {
+        [deckKey]: { ...deck, currentTimeSec: hotCue.timeSec },
+        lastLog: pushLog(
+          s.lastLog,
+          `Vinyl: Deck ${deckId} Hot Cue ${cueId} (${hotCue.label} @ ${hotCue.timeSec}s)`,
+        ),
+      }
+    }),
+
+  toggleDeckLoop: (deckId, lengthBeats = 4) =>
+    set((s) => {
+      const deckKey = deckId === 'A' ? 'deckA' : 'deckB'
+      const deck = s[deckKey]
+      const active = !deck.loop.active
+      return {
+        [deckKey]: {
+          ...deck,
+          loop: {
+            active,
+            startSec: active ? deck.currentTimeSec : deck.loop.startSec,
+            lengthBeats,
+          },
+        },
+        lastLog: pushLog(
+          s.lastLog,
+          `Vinyl: Deck ${deckId} Loop ${active ? 'ON' : 'OFF'} (${lengthBeats} beats)`,
+        ),
+      }
+    }),
+
+  setDeckFx: (deckId, fx) =>
+    set((s) => {
+      const deckKey = deckId === 'A' ? 'deckA' : 'deckB'
+      return {
+        [deckKey]: { ...s[deckKey], activeFx: fx },
+        lastLog: pushLog(s.lastLog, `Vinyl: Deck ${deckId} FX -> ${fx}`),
+      }
+    }),
+
+  setCrossfader: (value) =>
+    set((s) => ({ crossfader: Math.max(-1, Math.min(1, value)) })),
+
+  patchAutoMixer: (p) =>
+    set((s) => ({ autoMixer: { ...s.autoMixer, ...p } })),
+
+  triggerAutoMix: () => {
+    const s = get()
+    const activeDeck = s.crossfader <= 0 ? s.deckA : s.deckB
+    const targetDeckKey = activeDeck.id === 'A' ? 'deckB' : 'deckA'
+
+    // Auto load queue if target deck empty
+    if (!s[targetDeckKey].track && s.djQueue.length > 0) {
+      const nextTrack = s.djQueue[0]!
+      s.loadTrackToDeck(activeDeck.id === 'A' ? 'B' : 'A', nextTrack)
+      s.removeFromQueue(0)
+    }
+
+    set((state) => ({
+      autoMixer: {
+        ...state.autoMixer,
+        inTransition: true,
+        progress: 0,
+        targetDeck: activeDeck.id === 'A' ? 'B' : 'A',
+      },
+      [targetDeckKey]: {
+        ...state[targetDeckKey],
+        isPlaying: true,
+      },
+      lastLog: pushLog(
+        state.lastLog,
+        `Vinyl: Triggered Auto-Mix transition -> Deck ${activeDeck.id === 'A' ? 'B' : 'A'}`,
+      ),
+    }))
+  },
+
+  addYouTubeTrackToQueue: (input) =>
+    set((s) => {
+      const track =
+        typeof input === 'string' ? createYouTubeTrack({ idOrUrl: input }) : input
+      return {
+        djQueue: [...s.djQueue, track],
+        lastLog: pushLog(s.lastLog, `Vinyl: Added "${track.title}" to Queue`),
+      }
+    }),
+
+  removeFromQueue: (index) =>
+    set((s) => ({
+      djQueue: s.djQueue.filter((_, i) => i !== index),
+    })),
+
+  searchYouTubeTracks: (query) => {
+    if (!query.trim()) {
+      set({ ytSearchResults: DEMO_YOUTUBE_TRACKS })
+      return
+    }
+    const filtered = DEMO_YOUTUBE_TRACKS.filter(
+      (t) =>
+        t.title.toLowerCase().includes(query.toLowerCase()) ||
+        t.artist.toLowerCase().includes(query.toLowerCase()),
+    )
+    const custom = createYouTubeTrack({
+      idOrUrl: query,
+      title: `Search Result: ${query}`,
+    })
+    set((state) => ({
+      ytSearchResults: filtered.length > 0 ? filtered : [custom],
+      lastLog: pushLog(state.lastLog, `Vinyl: Searched YouTube for "${query}"`),
+    }))
+  },
 
   loadDemoTone: (freqHz = 440) => {
     const buf = createTone(get().sampleRate, 2, freqHz, 0.35)
@@ -457,6 +749,9 @@ export const useBatonStore = create<BatonState>((set, get) => ({
     const s = get()
     try {
       switch (s.activeTool) {
+        case 'vinyl':
+          s.triggerAutoMix()
+          break
         case 'song':
           get().generateSong()
           break
