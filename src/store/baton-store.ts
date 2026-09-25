@@ -383,7 +383,7 @@ export const useBatonStore = create<BatonState>((set, get) => ({
     }),
 
   setCrossfader: (value) =>
-    set((s) => ({ crossfader: Math.max(-1, Math.min(1, value)) })),
+    set({ crossfader: Math.max(-1, Math.min(1, value)) }),
 
   patchAutoMixer: (p) =>
     set((s) => ({ autoMixer: { ...s.autoMixer, ...p } })),
