@@ -12,9 +12,11 @@ import {
 import { AIAssistantPanel } from '@/components/AIAssistantPanel'
 import { SongCreatorPanel } from '@/components/SongCreatorPanel'
 import { TrainingPanel } from '@/components/TrainingPanel'
+import { VinylDJPanel } from '@/components/VinylDJPanel'
 import { PrimaryButton } from '@/components/ui'
 
 const TOOLS: { id: ToolId; label: string; blurb: string }[] = [
+  { id: 'vinyl', label: 'Vinyl DJ', blurb: 'Dual YouTube DJ & Auto-Mixer' },
   { id: 'song', label: 'Song Creator', blurb: 'Write a new song' },
   { id: 'train', label: 'Train', blurb: 'ML fine-tune method' },
   { id: 'autotune', label: 'Autotune', blurb: 'Pitch correction' },
@@ -29,6 +31,8 @@ const TOOLS: { id: ToolId; label: string; blurb: string }[] = [
 function ToolView() {
   const tool = useBatonStore((s) => s.activeTool)
   switch (tool) {
+    case 'vinyl':
+      return <VinylDJPanel />
     case 'song':
       return <SongCreatorPanel />
     case 'train':
